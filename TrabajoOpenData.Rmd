@@ -1,0 +1,173 @@
+---
+title: "Trabajo Open Data - Master Big Data UNED -"
+author: "Ricardo Hidalgo Aragón"
+mail:     "rharagon@yahoo.com"
+linkedin: "ricardo-hid-ara"
+github:   "rharagon"
+date: '2022-07-08'
+license:  by-nc-sa
+urlcolor: blue
+output:
+  html_document: 
+    theme:        cosmo # "default", "cerulean", "journal", "flatly", "readable", "spacelab", "united", "cosmo", "lumen", "paper", "sandstone", "simplex", "yeti"
+    highlight:    tango # "default", "tango", "pygments", "kate", "monochrome", "espresso", "zenburn", "haddock", "textmate"
+    toc:          true
+    toc_float:    true
+    code_folding: hide
+    includes:
+      after_body: footer.html
+  epuRate::epurate:
+    toc:             TRUE
+    number_sections: FALSE
+    code_folding:    "show"
+  pdf_document:   default
+  word_document:  default
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Para obligar a que salgan los iconos en documentos Rmarkdown
+htmltools::tagList(rmarkdown::html_dependency_font_awesome())
+```
+
+## Objetivo del trabajo
+
+Dentro del módulo de Open Data del Máster de Big Data y analítica de la UNED, hemos visto muchos ejemplos de como incorporar y trabajar para contestar preguntas del día a día con datos abiertos, accesibles a todo el mundo de forma gratuita.
+
+En este trabajo vamos a tratar de aclarar mediante representación visual de los datos, la relación del precio de la energía con la generación eléctrica por medio de fuentes renovables y no renovables.
+
+
+```{r carga paquetes y librerias}
+# Nos aseguramos que están instalado los paquetes y, sino los instalamos
+if(!is.element("rmarkdown", installed.packages()[, 1]))
+      install.packages("rmarkdown", repos = 'http://cran.us.r-project.org')
+if(!is.element("rmarkdown", installed.packages()[, 1]))
+      install.packages("rmarkdown", repos = 'http://cran.us.r-project.org')
+if(!is.element("httr",  installed.packages()[, 1]))
+      install.packages("httr", repos = 'http://cran.us.r-project.org')
+if(!is.element("jsonlite",  installed.packages()[, 1]))
+      install.packages("jsonlite", repos = 'http://cran.us.r-project.org')
+if(!is.element("ggplot2", installed.packages()[, 1]))
+      install.packages("ggplot2", repos = 'http://cran.us.r-project.org')
+if(!is.element("httr",  installed.packages()[, 1]))
+      install.packages("dplyr", repos = 'http://cran.us.r-project.org')
+if(!is.element("ggmosaic",  installed.packages()[, 1]))
+      install.packages("ggmosaic", repos = 'http://cran.us.r-project.org')
+
+# Cargamos las librerías
+library(rmarkdown)
+library(httr)
+library(jsonlite)
+library(ggplot2)
+library(dplyr)
+library(ggmosaic)
+```
+
+## Obtención de los datos
+
+Voy a hacer uso del API REST que ofrece [Red Eléctrica Española - REE](https://www.ree.es/es/apidatos) 
+
+En las pruebas realizadas, se observan aleatorias indisponibilidades del API, para paliar ese hecho cada vez que se ejecute guarda los datos descargados, y en caso de error de descarga utilizara los últimos datos que haya descargado, como los últimos disponibles.
+
+### Trabajos previos
+Cargamos los datos del API de Red Eléctrica, y lo salvaguardamos en un fichero de objeto, que en caso de error podamos volver a cargar para ejecutar los trabajos siempre con los últimos datos disponibles.
+
+```{r carga}
+URLBaseMercadosPrecio <- "https://apidatos.ree.es/es/datos/mercados/precios-mercados-tiempo-real"
+URLBaseGeneracionRenoYno <- "https://apidatos.ree.es/es/datos/generacion/evolucion-renovable-no-renovable"
+dia_ayer <- format(as.Date(Sys.Date(), "%Y-%m-%dT%H:%M")-1, "%Y-%m-%dT%H:%M")
+dia_menos_mes <- format(as.Date(Sys.Date(), "%Y-%m-%dT%H:%M")-30, "%Y-%m-%dT%H:%M")
+
+# Obtención y filtrado de datos de precio
+DatosMercadosPrecio <- GET(URLBaseMercadosPrecio, query = list(start_date= as.character(dia_menos_mes), end_date= as.character(dia_ayer), time_trunc="hour", geo_trunc="electric_system", geo_limit="peninsular", geo_ids=8741) )
+if (DatosMercadosPrecio$status_code == "200") {
+
+  print("Lectura correcta de los datos de precios")
+  saveRDS(DatosMercadosPrecio, file = "DatosMercadosPrecio.rds")
+  DatosMercadosPrecio <- fromJSON(rawToChar(DatosMercadosPrecio$content))
+  d_precios_dia <- DatosMercadosPrecio[["included"]][["attributes"]][["values"]][[1]] %>% select ("value", "datetime") %>% filter(between(as.Date(datetime), as.Date(dia_menos_mes),as.Date(dia_ayer)))
+
+} else {
+
+  print("Los datos de precios no se descargarón correctamente. Utilizando los últimos datos disponibles")
+  DatosMercadosPrecioreadRDS(file = "DatosMercadosPrecio.rds")
+  DatosMercadosPrecio <- fromJSON(rawToChar(DatosMercadosPrecio$content))
+  
+  # En caso de lectura de fichero, debemos reajustar las fechas a las inluidas en el objeto
+  dia_ayer <- format(as.Date(DatosMercadosPrecio[["data"]][["attributes"]][["last-update"]]), "%Y-%m-%dT%H:%M")
+  dia_menos_mes <- format(as.Date(DatosMercadosPrecio[["data"]][["attributes"]][["last-update"]])-30, "%Y-%m-%dT%H:%M")
+  d_precios_dia <- DatosMercadosPrecio[["included"]][["attributes"]][["values"]][[1]] %>% select ("value", "datetime") %>% filter(between(as.Date(datetime), as.Date(dia_menos_mes),as.Date(dia_ayer)))
+
+}
+
+# Obtención y filtrado de datos de generación  
+DatosGeneracionRenoYno <- GET(URLBaseGeneracionRenoYno, query = list(start_date= as.character(dia_menos_mes), end_date= as.character(dia_ayer), time_trunc="day", geo_trunc="electric_system", geo_limit="peninsular", geo_ids=8741) )
+if (DatosGeneracionRenoYno$status_code == "200") {
+  
+  print("Lectura correcta de los datos de generación")
+  saveRDS(DatosGeneracionRenoYno, file = "DatosGeneracionRenoYno.rds")
+  DatosGeneracionRenoYno <- fromJSON(rawToChar(DatosGeneracionRenoYno$content))
+  d_gen_ren <- DatosGeneracionRenoYno[["included"]][["attributes"]][["values"]][[1]] %>% select("value", "datetime") %>%     filter(between(as.Date(datetime), as.Date(dia_menos_mes),as.Date(dia_ayer)))
+  d_gen_NOren <- DatosGeneracionRenoYno[["included"]][["attributes"]][["values"]][[2]] %>% select("value", "datetime") %>% filter(between(as.Date(datetime), as.Date(dia_menos_mes),as.Date(dia_ayer)))
+
+} else {
+  
+  print("Los datos de generación no se descargarón correctamente. Utilizando los últimos datos disponibles")
+  DatosGeneracionRenoYno <- readRDS(file = "DatosGeneracionRenoYno.rds")
+  DatosGeneracionRenoYno <- fromJSON(rawToChar(DatosGeneracionRenoYno$content))
+  
+  # En caso de lectura de fichero, debemos reajustar las fechas a las inluidas en el objeto
+  dia_ayer <- format(as.Date(DatosGeneracionRenoYno[["data"]][["attributes"]][["last-update"]]), "%Y-%m-%dT%H:%M")
+  dia_menos_mes <- format(as.Date(DatosGeneracionRenoYno[["data"]][["attributes"]][["last-update"]])-30, "%Y-%m-%dT%H:%M")
+  gen_ren <- DatosGeneracionRenoYno[["included"]][["attributes"]][["values"]][[1]] %>% select("value", "datetime") %>% filter(between(as.Date(datetime), as.Date(dia_menosmes),as.Date(dia_ayer)))
+  gen_NOren <- DatosGeneracionRenoYno[["included"]][["attributes"]][["values"]][[2]] %>% select("value", "datetime") %>% filter(between(as.Date(datetime), as.Date(dia_menosmes),as.Date(dia_ayer)))
+
+}
+
+
+```
+### Transformación de los datos para su procesamiento
+Con los datos que ya hemos extraído, vamos a construir un *data frame* que combine los distintos orígenes de datos para posteriormente poder procesarlos con más facilidad.
+```{r Transformación}
+fecha_simple <- as.vector(format(as.Date(d_precios_dia$datetime, "%Y-%m-%dT%H:%M"), "%Y-%m-%d"))
+d_precios_dia <- cbind(d_precios_dia,fecha_simple)
+# Construimos la media de precios por día pues los obtenemos por hora
+d_precios_dia_media <- d_precios_dia %>% select(value, fecha_simple) %>% group_by(fecha_simple) %>% summarise(mediaXdia=mean(value))
+      
+# fecha <- format(as.Date(DatosGeneracionRenoYno[["included"]][["attributes"]][["values"]][[1]][["datetime"]], "%Y-%m-%dT%H:%M"), "%Y-%m-%d")
+      
+# Trasformamos los GW para que puedan ser visualizados en una magnitud comparable al coste
+d_gen_ren <- d_gen_ren$value/1000
+d_gen_NOren <- d_gen_NOren$value/1000
+      
+#creamos el dataset con todos los datos combinados que necesitamos para la representación
+df_preciosXtec <- data.frame(d_precios_dia_media,     # Datos Fecha - Coste
+                             d_gen_ren,               # Datos Generación Renovable
+                             d_gen_NOren)             # Datos Generación No Renovable
+#eliminamos la última fila del dataset por no estar actualizados los datos de generación para ese último día.
+df_preciosXtec=df_preciosXtec[-30,]
+df_preciosXtec
+
+```
+
+## Respuesta a la pregunta
+
+Recordemos que queríamos argumentar la respuesta a la relación entre el coste de la energía con la cantidad de energía generada por fuentes renovables y no renovables.
+
+Como este markdown, es dinámico según cuando se descarguen los datos. Lo más normal es que veamos en la gráfica una **relación directa entre menor coste de la energía, a mayor generación por fuentes renovables** y al contrario aumento del precio cuando aumenta la generaaicón por fuentes no renovables.
+
+```{r visualización}
+respuesta <- ggplot(df_preciosXtec, aes(x=format(as.Date(fecha_simple), "%Y-%m-%d"))) + 
+  geom_line(aes(y=d_gen_NOren,group=1, color = "Generación no renovable"), size= 2)  +
+  geom_line(aes(y=d_gen_ren,group=1, color = "Generación renovable"), size= 2)  +
+  geom_line(aes(y=mediaXdia,group=1, color = "Media Precios"), size= 3)  +
+  labs(x = "Fecha",y = "Mw/€", title = "Generación renovable/no renovable frente a precio medio", 
+       caption = paste("Datos de:",DatosGeneracionRenoYno[["included"]][["attributes"]][["last-update"]][1])) +
+  theme(axis.text.x = element_text(angle = 80, size = 8,hjust = 1, vjust = 1))+
+  scale_color_manual(name = "Leyenda", 
+                     values = c("Media Precios" = "#FF4500", "Generación renovable" = "#698B22", "Generación no renovable" = "#8B4726"),
+                     labels = c("Media Precios", "Generación renovable", "Generación no renovable" ))
+print(respuesta)
+```
