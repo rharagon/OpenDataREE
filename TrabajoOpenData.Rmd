@@ -1,10 +1,10 @@
 ---
-title: "Trabajo Open Data - Master Big Data UNED -"
+title: "Open Data - API REST de REE -"
 author: "Ricardo Hidalgo Aragón"
-mail:     "rharagon@yahoo.com"
+mail:     "rharagon@"
 linkedin: "ricardo-hid-ara"
 github:   "rharagon"
-date: '2022-07-08'
+date: '2024-10-09'
 license:  by-nc-sa
 urlcolor: blue
 output:
@@ -34,9 +34,9 @@ htmltools::tagList(rmarkdown::html_dependency_font_awesome())
 
 ## Objetivo del trabajo
 
-Dentro del módulo de Open Data del Máster de Big Data y analítica de la UNED, hemos visto muchos ejemplos de como incorporar y trabajar para contestar preguntas del día a día con datos abiertos, accesibles a todo el mundo de forma gratuita.
+Demostrar mediante el uso de API REST y datos publicos, accesibles a todo el mundo de forma gratuita, como es posible contestar preguntas del día a día.
 
-En este trabajo vamos a tratar de aclarar mediante representación visual de los datos, la relación del precio de la energía con la generación eléctrica por medio de fuentes renovables y no renovables.
+En este caso vamos a tratar de aclarar mediante representación visual de los datos, la relación del precio de la energía con la generación eléctrica por medio de fuentes renovables y no renovables.
 
 
 ```{r carga paquetes y librerias}
